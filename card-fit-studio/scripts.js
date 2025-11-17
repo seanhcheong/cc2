@@ -837,6 +837,7 @@ function updateDashboard() {
 function updateTheme(color) {
   setAccent(color);
   bodyEl.dataset.mode = state.preferences.cashback ? "cash" : "travel";
+
 }
 
 function setAccent(color) {
