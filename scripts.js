@@ -108,6 +108,30 @@ const radialLegend = document.getElementById('radialLegend');
 let radialSvg;
 let radialGroup;
 
+const raceElements = {
+  svg: document.getElementById('raceTrack'),
+  path: document.getElementById('trackPath'),
+  runnersGroup: document.getElementById('raceRunners'),
+  pitGroup: document.getElementById('pitStops'),
+  tooltip: document.getElementById('raceTooltip'),
+  standings: document.getElementById('raceStandings'),
+  timeframeButtons: document.querySelectorAll('[data-timeframe]'),
+};
+
+const timeframeMap = {
+  '1m': 1,
+  '6m': 6,
+  '12m': 12,
+};
+
+const raceState = {
+  timeframe: '12m',
+  runnerMap: new Map(),
+  animations: [],
+  statsMap: new Map(),
+  winCelebrated: false,
+};
+
 const summaryEls = {
   name: document.getElementById('bestCardName'),
   issuer: document.getElementById('bestCardIssuer'),
@@ -138,6 +162,10 @@ const radialKeys = [...spendCategories, 'bonus'];
 let lastScoredCards = [];
 
 const barColors = [0x38bdf8, 0x22d3ee, 0xc084fc, 0xf472b6, 0xfacc15];
+
+if (typeof gsap !== 'undefined' && typeof MotionPathPlugin !== 'undefined') {
+  gsap.registerPlugin(MotionPathPlugin);
+}
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', {
@@ -469,6 +497,236 @@ function hideRadialTooltip() {
   }
 }
 
+// --- Rewards race track ---
+const svgNS = 'http://www.w3.org/2000/svg';
+
+function getInitials(name) {
+  const parts = name.split(' ');
+  return parts
+    .filter((word) => word[0])
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join('');
+}
+
+function computeTimeframeValue(metrics, months) {
+  const bonus = metrics.breakdown.bonus || 0;
+  const annualFee = metrics.card.fees?.annual_fee || 0;
+  const nonBonusRewards = metrics.totalRewards - bonus;
+  const proratedRewards = nonBonusRewards * (months / 12);
+  let bonusContribution = 0;
+  if (bonus > 0) {
+    if (months >= 3) {
+      bonusContribution = bonus;
+    } else {
+      bonusContribution = bonus * (months / 3);
+    }
+  }
+  const feeShare = annualFee * Math.min(months / 12, 1);
+  const gross = proratedRewards + bonusContribution;
+  const net = gross - feeShare;
+  return { gross, net, feeShare };
+}
+
+function ensureRunner(cardId, label) {
+  if (!raceElements.runnersGroup) return null;
+  if (raceState.runnerMap.has(cardId)) {
+    return raceState.runnerMap.get(cardId);
+  }
+  const group = document.createElementNS(svgNS, 'g');
+  group.setAttribute('class', 'race-runner');
+  group.dataset.card = cardId;
+  const circle = document.createElementNS(svgNS, 'circle');
+  circle.setAttribute('r', '16');
+  circle.setAttribute('fill', cardColorCss[cardId] || '#38bdf8');
+  const text = document.createElementNS(svgNS, 'text');
+  text.setAttribute('dy', '0.35em');
+  text.textContent = getInitials(label);
+  group.append(circle, text);
+  group.addEventListener('pointerenter', (event) => showRaceTooltip(event, group.dataset.card));
+  group.addEventListener('pointerleave', hideRaceTooltip);
+  raceElements.runnersGroup.appendChild(group);
+  raceState.runnerMap.set(cardId, group);
+  return group;
+}
+
+function updatePitStops(entries) {
+  if (!raceElements.pitGroup || !raceElements.path) return;
+  raceElements.pitGroup.innerHTML = '';
+  const length = raceElements.path.getTotalLength();
+  entries.forEach((entry, index) => {
+    if (!entry.card.fees?.annual_fee) return;
+    const offset = Math.min(length * (0.55 + index * 0.07), length - 5);
+    const point = raceElements.path.getPointAtLength(offset);
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('class', 'pit-stop');
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('cx', point.x);
+    circle.setAttribute('cy', point.y);
+    circle.setAttribute('r', '14');
+    const text = document.createElementNS(svgNS, 'text');
+    text.setAttribute('x', point.x);
+    text.setAttribute('y', point.y - 20);
+    text.textContent = `Pit stop: ${formatCurrency(entry.card.fees.annual_fee)}`;
+    g.append(circle, text);
+    raceElements.pitGroup.appendChild(g);
+  });
+}
+
+function renderRaceStandings(entries, monthsLabel) {
+  if (!raceElements.standings) return;
+  raceElements.standings.innerHTML = '';
+  entries.forEach((entry, index) => {
+    const li = document.createElement('li');
+    li.className = 'race-entry';
+    li.dataset.card = entry.card.card_id;
+    li.innerHTML = `
+      <div>
+        <span class="badge">#${index + 1}</span>
+        <strong>${entry.card.card_name}</strong>
+        <span class="value">${formatCurrency(Math.round(entry.netValue))}</span>
+      </div>
+      <div class="meta">
+        <span>${monthsLabel} net outlook</span>
+        <span>Lap time: ${entry.duration.toFixed(1)}s</span>
+        <span>${entry.card.fees.annual_fee ? `Annual fee ${formatCurrency(entry.card.fees.annual_fee)}` : 'No annual fee'}</span>
+      </div>
+    `;
+    li.addEventListener('pointerenter', () => focusRunner(entry.card.card_id, true));
+    li.addEventListener('pointerleave', () => focusRunner(entry.card.card_id, false));
+    raceElements.standings.appendChild(li);
+  });
+}
+
+function focusRunner(cardId, focused) {
+  const runner = raceState.runnerMap.get(cardId);
+  if (!runner) return;
+  runner.classList.toggle('focused', Boolean(focused));
+}
+
+function resetWinnerStyles() {
+  raceElements.standings?.querySelectorAll('.race-entry').forEach((entry) => entry.classList.remove('winner'));
+  raceState.runnerMap.forEach((runner) => runner.classList.remove('winner'));
+}
+
+function highlightWinner(cardId) {
+  const entry = raceElements.standings?.querySelector(`[data-card="${cardId}"]`);
+  entry?.classList.add('winner');
+  const runner = raceState.runnerMap.get(cardId);
+  runner?.classList.add('winner');
+  if (typeof gsap !== 'undefined' && entry) {
+    gsap.fromTo(entry, { scale: 1 }, { scale: 1.03, duration: 0.4, yoyo: true, repeat: 1, ease: 'expo.out' });
+  }
+  if (typeof gsap !== 'undefined' && runner) {
+    gsap.fromTo(runner, { scale: 1 }, { scale: 1.1, duration: 0.45, yoyo: true, repeat: 1, ease: 'expo.out' });
+  }
+}
+
+function showRaceTooltip(event, cardId) {
+  if (!raceElements.tooltip || !raceState.statsMap.has(cardId)) return;
+  const stat = raceState.statsMap.get(cardId);
+  const bounds = raceElements.svg?.getBoundingClientRect();
+  if (!bounds) return;
+  raceElements.tooltip.hidden = false;
+  raceElements.tooltip.style.left = `${event.clientX - bounds.left + 12}px`;
+  raceElements.tooltip.style.top = `${event.clientY - bounds.top}px`;
+  raceElements.tooltip.innerHTML = `
+    <strong>${stat.card.card_name}</strong><br />
+    ${formatCurrency(Math.round(stat.netValue))} in ${stat.monthsLabel}<br />
+    ${formatCurrency(Math.round(stat.grossValue))} gross • fee impact ${formatCurrency(Math.round(stat.feeShare))}
+  `;
+}
+
+function hideRaceTooltip() {
+  if (raceElements.tooltip) {
+    raceElements.tooltip.hidden = true;
+  }
+}
+
+function startRace(entries) {
+  if (!raceElements.path) return;
+  raceState.animations.forEach((animation) => animation?.kill?.());
+  raceState.animations = [];
+  raceState.winCelebrated = false;
+  const winnerId = entries[0]?.card.card_id;
+  if (!winnerId) return;
+  if (typeof gsap === 'undefined' || typeof MotionPathPlugin === 'undefined') {
+    highlightWinner(winnerId);
+    return;
+  }
+  entries.forEach((entry) => {
+    const runner = ensureRunner(entry.card.card_id, entry.card.card_name);
+    if (!runner) return;
+    gsap.set(runner, { x: 0, y: 0 });
+    const animation = gsap.to(runner, {
+      duration: entry.duration,
+      ease: 'none',
+      motionPath: {
+        path: raceElements.path,
+        align: raceElements.path,
+        autoRotate: false,
+        alignOrigin: [0.5, 0.5],
+      },
+      onComplete: () => {
+        if (!raceState.winCelebrated && entry.card.card_id === winnerId) {
+          raceState.winCelebrated = true;
+          highlightWinner(entry.card.card_id);
+        }
+      },
+    });
+    raceState.animations.push(animation);
+  });
+}
+
+function mapDuration(values) {
+  const nets = values.map((entry) => entry.netValue);
+  const max = Math.max(...nets);
+  const min = Math.min(...nets);
+  const range = Math.max(max - min, 1);
+  const minDuration = 5.5;
+  const maxDuration = 13;
+  return values.map((entry) => {
+    const normalized = (entry.netValue - min) / range;
+    const duration = maxDuration - normalized * (maxDuration - minDuration);
+    return { ...entry, duration };
+  });
+}
+
+function updateRaceTrack(scoredCards) {
+  if (!raceElements.path || !Array.isArray(scoredCards) || scoredCards.length === 0) return;
+  const months = timeframeMap[raceState.timeframe] || 12;
+  const monthsLabel = months === 1 ? '1-month' : months === 6 ? '6-month' : '1-year';
+  const entries = scoredCards.map((metrics) => {
+    const timeframe = computeTimeframeValue(metrics, months);
+    return {
+      card: metrics.card,
+      netValue: timeframe.net,
+      grossValue: timeframe.gross,
+      feeShare: timeframe.feeShare,
+      months,
+      monthsLabel,
+    };
+  });
+  entries.sort((a, b) => b.netValue - a.netValue);
+  const withDuration = mapDuration(entries);
+  raceState.statsMap = new Map(withDuration.map((entry) => [entry.card.card_id, entry]));
+  withDuration.forEach((entry) => ensureRunner(entry.card.card_id, entry.card.card_name));
+  resetWinnerStyles();
+  renderRaceStandings(withDuration, monthsLabel);
+  updatePitStops(withDuration);
+  startRace(withDuration);
+}
+
+raceElements.timeframeButtons?.forEach((button) => {
+  button.addEventListener('click', () => {
+    const { timeframe } = button.dataset;
+    if (!timeframe || timeframe === raceState.timeframe) return;
+    raceState.timeframe = timeframe;
+    raceElements.timeframeButtons.forEach((btn) => btn.classList.toggle('active', btn === button));
+    updateRaceTrack(lastScoredCards);
+  });
+});
+
 // --- Three.js scene setup ---
 const sceneContainer = document.getElementById('cardScene');
 const scene = new THREE.Scene();
@@ -662,6 +920,7 @@ function updateDashboard() {
   renderComparisonTable(scored);
   lastScoredCards = scored;
   updateRadial(scored);
+  updateRaceTrack(scored);
 }
 
 form.addEventListener('input', updateDashboard);
