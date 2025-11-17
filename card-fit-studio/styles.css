@@ -2,17 +2,11 @@
   color-scheme: dark;
   --bg-travel: radial-gradient(circle at 20% 20%, #101732, #05060d 55%);
   --bg-cash: radial-gradient(circle at 15% 25%, #051d17, #030b07 55%);
-  --panel-travel: rgba(10, 15, 32, 0.9);
-  --panel-cash: rgba(4, 15, 12, 0.9);
-  --panel-border-travel: rgba(255, 255, 255, 0.08);
-  --panel-border-cash: rgba(93, 242, 181, 0.25);
-  --muted-travel: rgba(245, 247, 255, 0.65);
-  --muted-cash: rgba(214, 255, 241, 0.72);
   --bg: var(--bg-travel);
-  --panel: var(--panel-travel);
-  --panel-border: var(--panel-border-travel);
+  --panel: rgba(10, 15, 32, 0.9);
+  --panel-border: rgba(255, 255, 255, 0.08);
   --text: #f5f7ff;
-  --muted: var(--muted-travel);
+  --muted: rgba(245, 247, 255, 0.65);
   --accent: #7cf4ff;
   --accent-2: #ff72d6;
   --accent-3: #ffd166;
@@ -29,21 +23,15 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
-  transition: background 0.8s ease, color 0.8s ease;
+  transition: background 0.8s ease;
 }
 
 body[data-mode="cash"] {
   --bg: var(--bg-cash);
-  --panel: var(--panel-cash);
-  --panel-border: var(--panel-border-cash);
-  --muted: var(--muted-cash);
 }
 
 body[data-mode="travel"] {
   --bg: var(--bg-travel);
-  --panel: var(--panel-travel);
-  --panel-border: var(--panel-border-travel);
-  --muted: var(--muted-travel);
 }
 
 main {

@@ -824,7 +824,7 @@ function updateDashboard() {
   updateRadar(focus);
   const bestColor = getColorForCard(best.card.card_id);
   updateCardMaterial(parseInt(bestColor.replace("#", ""), 16));
-  updateTheme(bestColor, best.card);
+  updateTheme(bestColor);
   elements.bestCardTagline.dataset.score = best.composite.toFixed(2);
 
   const runner = cardScores[1];
@@ -834,17 +834,10 @@ function updateDashboard() {
   elements.bestCardTagline.setAttribute("data-summary", summaryText);
 }
 
-function updateTheme(color, bestCard) {
+function updateTheme(color) {
   setAccent(color);
-  const mode = bestCard?.rewards.reward_type === "cash_back" ? "cash" : "travel";
-  if (bodyEl.dataset.mode !== mode) {
-    bodyEl.dataset.mode = mode;
-    gsap.fromTo(
-      document.body,
-      { backgroundPosition: "0% 0%" },
-      { backgroundPosition: "100% 100%", duration: 1.2, ease: "power2.out" }
-    );
-  }
+  bodyEl.dataset.mode = state.preferences.cashback ? "cash" : "travel";
+
 }
 
 function setAccent(color) {
