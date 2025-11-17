@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Credit Card Decision Dashboard</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  </head>
+  <body>
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Interactive Planner</p>
+        <h1>Find the best card for your case</h1>
+        <p>
+          Tweak your spending, preferences, and must-have perks to instantly see which card delivers the strongest first-year
+          value.
+        </p>
+      </div>
+      <div class="hero-metric">
+        <p>Total spend modeled</p>
+        <p class="big" id="totalSpendDisplay">$30,000</p>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="panel controls" aria-labelledby="controls-title">
+        <div class="panel-header">
+          <h2 id="controls-title">Your scenario</h2>
+          <p>Adjust sliders and toggles to reflect how you'll use the card.</p>
+        </div>
+        <form id="preferenceForm">
+          <div class="control-group">
+            <label for="diningInput">Dining</label>
+            <div class="control-value">$<span data-field="dining">4,800</span></div>
+            <input type="range" id="diningInput" name="dining" min="0" max="12000" step="100" value="4800" />
+          </div>
+          <div class="control-group">
+            <label for="groceriesInput">Groceries</label>
+            <div class="control-value">$<span data-field="groceries">6,000</span></div>
+            <input type="range" id="groceriesInput" name="groceries" min="0" max="15000" step="100" value="6000" />
+          </div>
+          <div class="control-group">
+            <label for="travelInput">Travel</label>
+            <div class="control-value">$<span data-field="travel">3,600</span></div>
+            <input type="range" id="travelInput" name="travel" min="0" max="20000" step="100" value="3600" />
+          </div>
+          <div class="control-group">
+            <label for="gasInput">Gas</label>
+            <div class="control-value">$<span data-field="gas">2,400</span></div>
+            <input type="range" id="gasInput" name="gas" min="0" max="10000" step="100" value="2400" />
+          </div>
+          <div class="control-group">
+            <label for="otherInput">Other</label>
+            <div class="control-value">$<span data-field="other">13,200</span></div>
+            <input type="range" id="otherInput" name="other" min="0" max="30000" step="100" value="13200" />
+          </div>
+          <fieldset class="toggles">
+            <legend>Preferences</legend>
+            <label class="toggle">
+              <input type="checkbox" name="prefersTravelBenefits" checked />
+              <span>Needs travel protections</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="travelsInternationally" checked />
+              <span>Uses the card abroad</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="prefersCashback" />
+              <span>Prefers cash back simplicity</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="prefersNoAnnualFee" />
+              <span>Wants no annual fee</span>
+            </label>
+          </fieldset>
+        </form>
+      </section>
+
+      <section class="panel highlight" aria-labelledby="highlight-title">
+        <div class="panel-header">
+          <h2 id="highlight-title">Recommended card</h2>
+          <p>Scored from reward value, fees, and how well benefits match your toggles.</p>
+        </div>
+        <div class="best-card" id="bestCard">
+          <div>
+            <p class="eyebrow">Top pick</p>
+            <h3 id="bestCardName"></h3>
+            <p id="bestCardIssuer">—</p>
+            <dl>
+              <div>
+                <dt>First-year net value</dt>
+                <dd id="bestCardValue">—</dd>
+              </div>
+              <div>
+                <dt>Annual fee</dt>
+                <dd id="bestCardFee">—</dd>
+              </div>
+              <div>
+                <dt>Reason</dt>
+                <dd id="bestCardReason">—</dd>
+              </div>
+            </dl>
+          </div>
+          <div class="scene" id="cardScene" aria-label="3D card visualization"></div>
+        </div>
+      </section>
+
+      <section class="panel story" aria-labelledby="story-title">
+        <div class="panel-header">
+          <h2 id="story-title">Reward story</h2>
+          <p>The Three.js scene shows how each category fuels your rewards—this list keeps the exact numbers handy.</p>
+        </div>
+        <ul id="categoryBreakdown" class="category-list" aria-live="polite"></ul>
+      </section>
+
+      <section class="panel orbit" aria-labelledby="orbit-title">
+        <div class="panel-header">
+          <h2 id="orbit-title">Value orbit</h2>
+          <p>
+            A D3-powered polar plot layers each card's category haul. Hover to see how travel, dining, or even the sign-up bonus push
+            one option ahead of the other.
+          </p>
+        </div>
+        <div id="radialViz" class="radial-viz" role="img" aria-label="Polar comparison of category values">
+          <div id="radialTooltip" class="radial-tooltip" hidden></div>
+        </div>
+        <div id="radialLegend" class="radial-legend" aria-live="polite"></div>
+      </section>
+
+      <section class="panel race" aria-labelledby="race-title">
+        <div class="panel-header">
+          <h2 id="race-title">Rewards race track</h2>
+          <p>
+            Inspired by interactive race-storytelling, card icons sprint around a neon circuit. Their speed mirrors how much
+            value they deliver over the selected timeframe while pit stops show when annual fees cut into the lead.
+          </p>
+        </div>
+        <div class="time-toggle" role="group" aria-label="Race timeframe">
+          <button type="button" data-timeframe="1m">1 month</button>
+          <button type="button" data-timeframe="6m">6 months</button>
+          <button type="button" data-timeframe="12m" class="active">1 year</button>
+        </div>
+        <div class="race-stage">
+          <svg
+            id="raceTrack"
+            viewBox="0 0 640 320"
+            preserveAspectRatio="xMidYMid meet"
+            role="img"
+            aria-label="Animated racing comparison of credit card reward velocity"
+          >
+            <defs>
+              <linearGradient id="trackGradient" x1="0%" x2="100%">
+                <stop offset="0%" stop-color="rgba(59,130,246,0.6)" />
+                <stop offset="100%" stop-color="rgba(244,114,182,0.6)" />
+              </linearGradient>
+              <radialGradient id="trackGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="rgba(14,165,233,0.35)" />
+                <stop offset="100%" stop-color="rgba(15,23,42,0)" />
+              </radialGradient>
+            </defs>
+            <circle cx="320" cy="160" r="140" fill="url(#trackGlow)" opacity="0.6"></circle>
+            <path
+              id="trackPath"
+              d="M90,40 C20,60 10,120 20,170 C30,230 80,280 150,290 L490,290 C560,285 610,230 620,170 C630,110 600,60 540,40 Z"
+              fill="none"
+              stroke="url(#trackGradient)"
+              stroke-width="10"
+              stroke-linecap="round"
+            ></path>
+            <g id="pitStops"></g>
+            <g id="raceRunners"></g>
+          </svg>
+          <div id="raceTooltip" class="race-tooltip" hidden></div>
+        </div>
+        <ul id="raceStandings" class="race-standings" aria-live="polite"></ul>
+      </section>
+
+      <section class="panel comparison" aria-labelledby="comparison-title">
+        <div class="panel-header">
+          <h2 id="comparison-title">Full comparison</h2>
+          <p>Sort the table to inspect APRs, fees, and approval odds.</p>
+        </div>
+        <table id="comparisonTable">
+          <thead>
+            <tr>
+              <th>Card</th>
+              <th>Annual fee</th>
+              <th>Foreign fee</th>
+              <th>Intro APR</th>
+              <th>First-year value</th>
+              <th>Min credit score</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+
+    <footer>
+      <p>Data modeled with Chase Sapphire Preferred and Citi Double Cash (sample set).</p>
+    </footer>
+
+    <script src="scripts.js"></script>
+  </body>
+</html>
